@@ -6,7 +6,7 @@
   "publisher": "lcz",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dummy/trae-ai-usage-tracker.git"
+    "url": "https://github.com/lcz1219/timedps"
   },
   "engines": {
     "vscode": "^1.80.0"
