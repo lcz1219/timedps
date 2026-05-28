@@ -1,0 +1,116 @@
+{
+  "name": "timedps",
+  "displayName": "TimedPS",
+  "description": "Track token usage for third-party AI APIs via local proxy",
+  "version": "0.0.1",
+  "publisher": "lcz",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dummy/trae-ai-usage-tracker.git"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ai-usage-tracker.showUsage",
+        "title": "AI Usage: Show Details"
+      },
+      {
+        "command": "ai-usage-tracker.resetUsage",
+        "title": "AI Usage: Reset Usage"
+      },
+      {
+        "command": "ai-usage-tracker.refreshBalance",
+        "title": "AI Usage: Refresh Official Balance"
+      },
+      {
+        "command": "ai-usage-tracker.refreshTree",
+        "title": "AI Usage: Refresh History Tree",
+        "icon": "$(refresh)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ai-usage-tracker-sidebar",
+          "title": "AI Usage",
+          "icon": "$(pulse)"
+        }
+      ]
+    },
+    "views": {
+      "ai-usage-tracker-sidebar": [
+        {
+          "id": "ai-usage-tracker-tree",
+          "name": "Usage History"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "ai-usage-tracker.refreshTree",
+          "when": "view == ai-usage-tracker-tree",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AI Usage Tracker",
+      "properties": {
+        "aiUsageTracker.targetApiUrl": {
+          "type": "string",
+          "default": "https://api.deepseek.com",
+          "description": "The real API base URL to forward requests to (e.g., https://api.deepseek.com)"
+        },
+        "aiUsageTracker.proxyPort": {
+          "type": "number",
+          "default": 31234,
+          "description": "The local port for the proxy server"
+        },
+        "aiUsageTracker.currencySymbol": {
+          "type": "string",
+          "default": "¥",
+          "description": "The currency symbol to display (e.g., ¥, $)"
+        },
+        "aiUsageTracker.inputPricePerMillion": {
+          "type": "number",
+          "default": 1,
+          "description": "Price per 1 million Input (Prompt) tokens (Default 1.0 for DeepSeek V3 Cache Miss)"
+        },
+        "aiUsageTracker.outputPricePerMillion": {
+          "type": "number",
+          "default": 2,
+          "description": "Price per 1 million Output (Completion) tokens (Default 2.0 for DeepSeek V3)"
+        },
+        "aiUsageTracker.cacheHitPricePerMillion": {
+          "type": "number",
+          "default": 0.1,
+          "description": "Price per 1 million Cached Input tokens (Default 0.1 for DeepSeek V3 Cache Hit)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "package": "source ~/.nvm/nvm.sh && nvm use 20 && npx @vscode/vsce package --no-dependencies --allow-star-activation"
+  },
+  "devDependencies": {
+    "@types/node": "18.x",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.1.3"
+  }
+}
