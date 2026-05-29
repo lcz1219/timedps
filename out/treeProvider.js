@@ -65,30 +65,30 @@ class UsageTreeProvider {
             const tokensStr = `${(turn.totalTokens / 1000).toFixed(1)}k`;
             const item = new UsageItem(prompt, vscode.TreeItemCollapsibleState.Collapsed, 'turn', undefined, turn);
             // 扁平化 UI 核心：使用 description 显示关键副标题
-            item.description = `${dateStr} | ${costStr}`;
+            item.description = `${dateStr} | 耗资: ${costStr}`;
             // 使用 tooltip 提供富文本的 Markdown 悬浮卡片
             const tooltip = new vscode.MarkdownString();
-            tooltip.appendMarkdown(`** 提问:** ${prompt}\n\n`);
+            tooltip.appendMarkdown(`**提问:** ${prompt}\n\n`);
             tooltip.appendMarkdown(`---\n\n`);
-            tooltip.appendMarkdown(`- ** 费用:** ${costStr}\n`);
-            tooltip.appendMarkdown(`- ** 总 Tokens:** ${turn.totalTokens.toLocaleString()}\n`);
+            tooltip.appendMarkdown(`- **预估费用:** ${costStr}\n`);
+            tooltip.appendMarkdown(`- **总 Tokens:** ${turn.totalTokens.toLocaleString()}\n`);
             tooltip.appendMarkdown(`  - 命中缓存: ${turn.cachedTokens.toLocaleString()}\n`);
             tooltip.appendMarkdown(`  - 未命中缓存: ${turn.uncachedPromptTokens.toLocaleString()}\n`);
             tooltip.appendMarkdown(`  - 输出生成: ${turn.completionTokens.toLocaleString()}\n`);
-            tooltip.appendMarkdown(`- ** API 请求:** ${turn.requestCount} 次\n`);
-            tooltip.appendMarkdown(`- ** 时间:** ${dateObj.toLocaleString()}\n`);
+            tooltip.appendMarkdown(`- **API 请求:** ${turn.requestCount} 次\n`);
+            tooltip.appendMarkdown(`- **时间:** ${dateObj.toLocaleString()}\n`);
             item.tooltip = tooltip;
             return item;
         });
     }
     getDetails(turn) {
         return [
-            new UsageItem(` 费用: ${this.currencySymbol}${turn.totalCost.toFixed(4)}`, vscode.TreeItemCollapsibleState.None, 'detail'),
-            new UsageItem(` 总 Tokens: ${turn.totalTokens.toLocaleString()}`, vscode.TreeItemCollapsibleState.None, 'detail'),
-            new UsageItem(`  - 未命中缓存: ${turn.uncachedPromptTokens.toLocaleString()}`, vscode.TreeItemCollapsibleState.None, 'detail'),
-            new UsageItem(`  - 命中缓存: ${turn.cachedTokens.toLocaleString()}`, vscode.TreeItemCollapsibleState.None, 'detail'),
-            new UsageItem(`  - 输出生成: ${turn.completionTokens.toLocaleString()}`, vscode.TreeItemCollapsibleState.None, 'detail'),
-            new UsageItem(` API 请求次数: ${turn.requestCount}`, vscode.TreeItemCollapsibleState.None, 'detail')
+            new UsageItem(`预估费用: ${this.currencySymbol}${turn.totalCost.toFixed(4)}`, vscode.TreeItemCollapsibleState.None, 'detail-cost'),
+            new UsageItem(`总 Tokens: ${turn.totalTokens.toLocaleString()}`, vscode.TreeItemCollapsibleState.None, 'detail-token'),
+            new UsageItem(`命中缓存: ${turn.cachedTokens.toLocaleString()}`, vscode.TreeItemCollapsibleState.None, 'detail-cache-hit'),
+            new UsageItem(`未命中缓存: ${turn.uncachedPromptTokens.toLocaleString()}`, vscode.TreeItemCollapsibleState.None, 'detail-cache-miss'),
+            new UsageItem(`输出生成: ${turn.completionTokens.toLocaleString()}`, vscode.TreeItemCollapsibleState.None, 'detail-output'),
+            new UsageItem(`请求次数: ${turn.requestCount}`, vscode.TreeItemCollapsibleState.None, 'detail-request')
         ];
     }
 }
@@ -106,11 +106,27 @@ class UsageItem extends vscode.TreeItem {
         this.type = type;
         this.date = date;
         this.turnData = turnData;
-        if (type === 'date') {
-            this.iconPath = new vscode.ThemeIcon('calendar');
-        }
-        else if (type === 'turn') {
+        // 使用更具语义化的扁平化内置图标
+        if (type === 'turn') {
             this.iconPath = new vscode.ThemeIcon('comment-discussion');
+        }
+        else if (type === 'detail-cost') {
+            this.iconPath = new vscode.ThemeIcon('credit-card');
+        }
+        else if (type === 'detail-token') {
+            this.iconPath = new vscode.ThemeIcon('symbol-event');
+        }
+        else if (type === 'detail-cache-hit') {
+            this.iconPath = new vscode.ThemeIcon('history');
+        }
+        else if (type === 'detail-cache-miss') {
+            this.iconPath = new vscode.ThemeIcon('cloud-download');
+        }
+        else if (type === 'detail-output') {
+            this.iconPath = new vscode.ThemeIcon('output');
+        }
+        else if (type === 'detail-request') {
+            this.iconPath = new vscode.ThemeIcon('pulse');
         }
         else {
             this.iconPath = new vscode.ThemeIcon('circle-small-filled');
