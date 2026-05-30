@@ -487,7 +487,7 @@ function finalizeRequest() {
         }
         turnFlushTimer = setTimeout(() => {
             flushTurn();
-        }, 8000);
+        }, 80000);
     }
 }
 

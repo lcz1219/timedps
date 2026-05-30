@@ -10,7 +10,6 @@ const cp = require("child_process");
 const net = require("net");
 const treeProvider_1 = require("./treeProvider");
 let statusBarItem;
-let refreshStatusBarItem;
 let outputChannel;
 let treeProvider;
 let totalTokens = 0;
@@ -23,6 +22,17 @@ let gatewayPort = 31234;
 let gatewayPollTimer;
 let gatewayConnected = false;
 let gatewayConflictShown = false;
+let usageQuickPick;
+let usageQuickPickVisible = false;
+let usageQuickPickRefreshing = false;
+const usageRefreshButton = {
+    iconPath: new vscode.ThemeIcon('sync', new vscode.ThemeColor('charts.green')),
+    tooltip: '刷新官方余额'
+};
+const usageRefreshSpinningButton = {
+    iconPath: new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.green')),
+    tooltip: '正在刷新官方余额'
+};
 function logDebug(msg) {
     const time = new Date().toLocaleTimeString();
     const line = `[${time}] ${msg}`;
@@ -39,6 +49,43 @@ function formatTokens(tokens) {
         return `${(tokens / 1000).toFixed(1)}k`;
     }
     return tokens.toString();
+}
+// 同步 QuickPick 顶部按钮和标题状态，让刷新中的反馈更明显一点
+function updateUsageQuickPickActions() {
+    if (!usageQuickPick) {
+        return;
+    }
+    usageQuickPick.buttons = [usageQuickPickRefreshing ? usageRefreshSpinningButton : usageRefreshButton];
+    usageQuickPick.title = usageQuickPickRefreshing ? 'AI Usage · 刷新中' : 'AI Usage';
+}
+// 生成浮动统计面板的数据项
+function getUsageQuickPickItems() {
+    const config = vscode.workspace.getConfiguration('aiUsageTracker');
+    const currencySymbol = config.get('currencySymbol', '¥');
+    const gatewayStatus = gatewayConnected ? '已连接' : '未连接';
+    const balanceText = officialBalance !== undefined ? `${currencySymbol}${officialBalance}` : '未知';
+    return [
+        {
+            label: `$(graph) 总 Tokens`,
+            description: formatTokens(totalTokens),
+            detail: '累计使用量'
+        },
+        {
+            label: `$(credit-card) 预估费用`,
+            description: `${currencySymbol}${totalCost.toFixed(4)}`,
+            detail: '本地统计'
+        },
+        {
+            label: `$(server-environment) 官方余额`,
+            description: balanceText,
+            detail: 'DeepSeek 账户余额'
+        },
+        {
+            label: `$(pulse) 网关状态`,
+            description: gatewayStatus,
+            detail: `代理端口 ${gatewayPort}`
+        }
+    ];
 }
 function readJsonResponse(pathName, method = 'GET', body) {
     return new Promise((resolve, reject) => {
@@ -137,10 +184,10 @@ function updateStatusBar() {
     }
     let text = `$(graph) ${formatTokens(totalTokens)} · ${currencySymbol}${totalCost.toFixed(4)}`;
     if (officialBalance !== undefined) {
-        text += ` | $(server-environment) ${currencySymbol}${officialBalance}`;
+        text += `  ${currencySymbol}${officialBalance}`;
     }
     statusBarItem.text = text;
-    statusBarItem.tooltip = '点击查看单次消耗日志与详情';
+    statusBarItem.tooltip = '点击查看详情';
 }
 async function startGateway(context) {
     const config = vscode.workspace.getConfiguration('aiUsageTracker');
@@ -227,20 +274,53 @@ async function activate(context) {
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusBarItem.command = 'ai-usage-tracker.showUsage';
     context.subscriptions.push(statusBarItem);
-    refreshStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
-    refreshStatusBarItem.text = '$(sync)';
-    refreshStatusBarItem.tooltip = '手动刷新官方余额';
-    refreshStatusBarItem.command = 'ai-usage-tracker.refreshBalance';
-    context.subscriptions.push(refreshStatusBarItem);
     updateStatusBar();
     statusBarItem.show();
-    refreshStatusBarItem.show();
     const showCmd = vscode.commands.registerCommand('ai-usage-tracker.showUsage', async () => {
         await updateFromGateway();
-        outputChannel.show();
-        const config = vscode.workspace.getConfiguration('aiUsageTracker');
-        const currencySymbol = config.get('currencySymbol', '¥');
-        vscode.window.showInformationMessage(`当前总 Tokens: ${formatTokens(totalTokens)}，本地预估费用: ${currencySymbol}${totalCost.toFixed(4)}，官方余额: ${officialBalance !== undefined ? currencySymbol + officialBalance : '未知'}`);
+        if (usageQuickPick && usageQuickPickVisible) {
+            usageQuickPickVisible = false;
+            usageQuickPick.hide();
+            return;
+        }
+        if (!usageQuickPick) {
+            // QuickPick 会以悬浮层方式显示，比打开一个编辑器标签更接近卡片效果
+            usageQuickPick = vscode.window.createQuickPick();
+            usageQuickPick.title = 'AI Usage';
+            usageQuickPick.placeholder = '点击状态栏可再次隐藏，右上角按钮用于刷新官方余额';
+            usageQuickPick.ignoreFocusOut = false;
+            usageQuickPick.matchOnDescription = true;
+            usageQuickPick.matchOnDetail = true;
+            updateUsageQuickPickActions();
+            usageQuickPick.onDidHide(() => {
+                usageQuickPickVisible = false;
+            });
+            usageQuickPick.onDidTriggerButton(async (button) => {
+                if (button !== usageRefreshButton && button !== usageRefreshSpinningButton) {
+                    return;
+                }
+                usageQuickPickRefreshing = true;
+                updateUsageQuickPickActions();
+                usageQuickPick.busy = true;
+                try {
+                    const result = await readJsonResponse('/__timedps/refresh-balance', 'POST');
+                    officialBalance = result.officialBalance;
+                    updateStatusBar();
+                    usageQuickPick.items = getUsageQuickPickItems();
+                }
+                catch (e) {
+                    vscode.window.showErrorMessage(`获取余额失败: ${e}`);
+                }
+                finally {
+                    usageQuickPickRefreshing = false;
+                    updateUsageQuickPickActions();
+                    usageQuickPick.busy = false;
+                }
+            });
+        }
+        usageQuickPick.items = getUsageQuickPickItems();
+        usageQuickPickVisible = true;
+        usageQuickPick.show();
     });
     const resetCmd = vscode.commands.registerCommand('ai-usage-tracker.resetUsage', async () => {
         try {
@@ -253,18 +333,23 @@ async function activate(context) {
         }
     });
     const refreshCmd = vscode.commands.registerCommand('ai-usage-tracker.refreshBalance', async () => {
-        refreshStatusBarItem.text = '$(sync~spin)';
+        usageQuickPickRefreshing = true;
+        updateUsageQuickPickActions();
         try {
             const result = await readJsonResponse('/__timedps/refresh-balance', 'POST');
             officialBalance = result.officialBalance;
             updateStatusBar();
+            if (usageQuickPick && usageQuickPickVisible) {
+                usageQuickPick.items = getUsageQuickPickItems();
+            }
             vscode.window.showInformationMessage(`获取成功！官方可用余额: ${officialBalance}`);
         }
         catch (e) {
             vscode.window.showErrorMessage(`获取余额失败: ${e}`);
         }
         finally {
-            refreshStatusBarItem.text = '$(sync)';
+            usageQuickPickRefreshing = false;
+            updateUsageQuickPickActions();
         }
     });
     const refreshTreeCmd = vscode.commands.registerCommand('ai-usage-tracker.refreshTree', async () => {
@@ -297,6 +382,67 @@ async function activate(context) {
         const doc = await vscode.workspace.openTextDocument(logPath);
         await vscode.window.showTextDocument(doc);
     });
+    // 方案六：点击侧边栏历史记录回合，弹出详情 QuickPick 查看完整摘要
+    // const showTurnDetailCmd = vscode.commands.registerCommand('ai-usage-tracker.showTurnDetail', (turnData: any) => {
+    //     if (!turnData) return;
+    //     const config = vscode.workspace.getConfiguration('aiUsageTracker');
+    //     const currencySymbol = config.get<string>('currencySymbol', '¥');
+    //     const dateStr = new Date(turnData.startTime).toLocaleString();
+    //     const prompt = turnData.userPrompt || 'Agent 内部调用 / 继续生成';
+    //     const costStr = `${currencySymbol}${(turnData.totalCost || 0).toFixed(4)}`;
+    //     const quickPick = vscode.window.createQuickPick();
+    //     quickPick.title = '对话详情';
+    //     quickPick.placeholder = prompt.length > 80 ? prompt.substring(0, 80) + '...' : prompt;
+    //     quickPick.ignoreFocusOut = true;
+    //     quickPick.matchOnDescription = false;
+    //     quickPick.matchOnDetail = false;
+    //     quickPick.items = [
+    //         {
+    //             label: `$(question) 完整提问`,
+    //             description: '',
+    //             detail: prompt
+    //         },
+    //         {
+    //             label: `$(calendar) 时间`,
+    //             description: dateStr,
+    //             detail: ''
+    //         },
+    //         {
+    //             label: `$(credit-card) 费用`,
+    //             description: costStr,
+    //             detail: ''
+    //         },
+    //         {
+    //             label: `$(symbol-number) 总 Tokens`,
+    //             description: `${(turnData.totalTokens || 0).toLocaleString()}`,
+    //             detail: ''
+    //         },
+    //         {
+    //             label: `$(arrow-up) 未命中缓存`,
+    //             description: `${(turnData.uncachedPromptTokens || 0).toLocaleString()} tokens`,
+    //             detail: ''
+    //         },
+    //         {
+    //             label: `$(database) 命中缓存`,
+    //             description: `${(turnData.cachedTokens || 0).toLocaleString()} tokens`,
+    //             detail: ''
+    //         },
+    //         {
+    //             label: `$(sparkle) 输出生成`,
+    //             description: `${(turnData.completionTokens || 0).toLocaleString()} tokens`,
+    //             detail: ''
+    //         },
+    //         {
+    //             label: `$(pulse) API 请求次数`,
+    //             description: `${turnData.requestCount || 0} 次`,
+    //             detail: ''
+    //         }
+    //     ];
+    //     quickPick.onDidAccept(() => {
+    //         quickPick.hide();
+    //     });
+    //     // quickPick.show();
+    // });
     context.subscriptions.push(showCmd, resetCmd, refreshCmd, refreshTreeCmd, setApiKeyCmd, showGatewayLogCmd);
     context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
         if (e.affectsConfiguration('aiUsageTracker.proxyPort') ||
